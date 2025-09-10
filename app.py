@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-import sqlite3
 import secrets
 import string
 from datetime import datetime
@@ -7,25 +6,8 @@ import os
 
 app = Flask(__name__)
 
-# Database setup
-DATABASE = 'passwords.db'
-
-def init_db():
-    """Initialize the database with required tables"""
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS passwords (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            website TEXT NOT NULL,
-            username TEXT,
-            password TEXT NOT NULL,
-            length INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# In-memory storage for demo purposes (will reset on each deployment)
+passwords_storage = []
 
 def generate_password(length=12, include_symbols=True):
     """Generate a secure password"""
@@ -83,15 +65,17 @@ def generate():
         # Generate password
         password = generate_password(length, include_symbols)
 
-        # Store in database
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO passwords (website, username, password, length)
-            VALUES (?, ?, ?, ?)
-        ''', (website, username, password, length))
-        conn.commit()
-        conn.close()
+        # Store in memory (temporary storage)
+        password_entry = {
+            'id': len(passwords_storage) + 1,
+            'website': website,
+            'username': username,
+            'password': password,
+            'length': length,
+            'include_symbols': include_symbols,
+            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        passwords_storage.append(password_entry)
 
         # Return success page with the generated password
         return render_template('result.html', 
@@ -111,8 +95,13 @@ def api_generate():
     
     website = data.get('website', '').strip()
     username = data.get('username', '').strip()
-    length = int(data.get('length', 12))
-    include_symbols = data.get('symbols', False)
+    
+    try:
+        length = int(data.get('length', 12))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid length parameter'}), 400
+        
+    include_symbols = bool(data.get('symbols', False))
 
     if not website:
         return jsonify({'error': 'Website is required'}), 400
@@ -124,21 +113,24 @@ def api_generate():
         # Generate password
         password = generate_password(length, include_symbols)
 
-        # Store in database
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO passwords (website, username, password, length)
-            VALUES (?, ?, ?, ?)
-        ''', (website, username, password, length))
-        conn.commit()
-        conn.close()
+        # Store in memory
+        password_entry = {
+            'id': len(passwords_storage) + 1,
+            'website': website,
+            'username': username,
+            'password': password,
+            'length': length,
+            'include_symbols': include_symbols,
+            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        passwords_storage.append(password_entry)
 
         return jsonify({
             'success': True,
             'password': password,
             'website': website,
-            'username': username
+            'username': username,
+            'length': length
         })
     
     except Exception as e:
@@ -146,19 +138,11 @@ def api_generate():
 
 @app.route('/passwords')
 def view_passwords():
-    """View all stored passwords"""
+    """View all stored passwords (from current session)"""
     try:
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, website, username, password, length, created_at
-            FROM passwords
-            ORDER BY created_at DESC
-        ''')
-        passwords = cursor.fetchall()
-        conn.close()
-
-        return render_template('passwords.html', passwords=passwords)
+        # Sort by most recent first
+        sorted_passwords = sorted(passwords_storage, key=lambda x: x['created_at'], reverse=True)
+        return render_template('passwords.html', passwords=sorted_passwords)
     
     except Exception as e:
         return render_template('passwords.html', passwords=[], error=str(e))
@@ -167,15 +151,10 @@ def view_passwords():
 def api_passwords():
     """API endpoint for monitoring purposes - simple data retrieval"""
     try:
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM passwords')
-        count = cursor.fetchone()[0]
-        conn.close()
-
         return jsonify({
-            'total_passwords': count,
-            'status': 'healthy'
+            'total_passwords': len(passwords_storage),
+            'status': 'healthy',
+            'storage_type': 'in-memory'
         })
     except Exception as e:
         return jsonify({'error': str(e), 'status': 'unhealthy'}), 500
@@ -184,26 +163,36 @@ def api_passwords():
 def delete_password(password_id):
     """Delete a password entry"""
     try:
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM passwords WHERE id = ?', (password_id,))
-        conn.commit()
-        conn.close()
+        global passwords_storage
+        passwords_storage = [p for p in passwords_storage if p['id'] != password_id]
         return redirect(url_for('view_passwords'))
     except Exception as e:
         return redirect(url_for('view_passwords'))
+
+@app.route('/clear', methods=['POST'])
+def clear_passwords():
+    """Clear all stored passwords"""
+    global passwords_storage
+    passwords_storage = []
+    return redirect(url_for('view_passwords'))
 
 @app.route('/health')
 def health_check():
     """Health check endpoint for monitoring"""
     try:
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute('SELECT 1')
-        conn.close()
-        return jsonify({'status': 'healthy', 'database': 'connected'})
+        return jsonify({
+            'status': 'healthy',
+            'storage': 'in-memory',
+            'passwords_count': len(passwords_storage),
+            'timestamp': datetime.now().isoformat()
+        })
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+
+@app.route('/favicon.ico')
+def favicon():
+    """Handle favicon requests"""
+    return '', 204
 
 # Error handlers
 @app.errorhandler(404)
@@ -214,9 +203,10 @@ def not_found_error(error):
 def internal_error(error):
     return render_template('index.html', error='Internal server error'), 500
 
-if __name__ == '__main__':
-    # Initialize database
-    init_db()
+@app.errorhandler(405)
+def method_not_allowed(error):
+    return render_template('index.html', error='Method not allowed'), 405
 
+if __name__ == '__main__':
     # Run the application
     app.run(host='0.0.0.0', port=5000, debug=True)

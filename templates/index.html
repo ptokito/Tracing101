@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Generator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .checkbox-group {
+            margin: 20px 0;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        .password-display {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .nav-links {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .nav-links a {
+            color: #54B848;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Secure Password Generator</h1>
+        
+        <form id="passwordForm">
+            <div class="form-group">
+                <label for="website">Website/Service *</label>
+                <input type="text" id="website" name="website" required placeholder="e.g., github.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="username">Username/Email</label>
+                <input type="text" id="username" name="username" placeholder="e.g., john.doe@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="length">Password Length</label>
+                <input type="number" id="length" name="length" value="12" min="4" max="128">
+            </div>
+            
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" name="symbols" checked>
+                    Include symbols (!@#$%^&*)
+                </label>
+            </div>
+            
+            <button type="submit" class="btn">Generate Password</button>
+        </form>
+        
+        <div id="result" class="result">
+            <h3>Generated Password:</h3>
+            <div id="passwordDisplay" class="password-display"></div>
+            <p><strong>Website:</strong> <span id="resultWebsite"></span></p>
+            <p><strong>Username:</strong> <span id="resultUsername"></span></p>
+            <p>✅ Password saved to database!</p>
+        </div>
+        
+        <div id="error" class="error"></div>
+        
+        <div class="nav-links">
+            <a href="/passwords">View All Passwords →</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('passwordForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const errorDiv = document.getElementById('error');
+            const resultDiv = document.getElementById('result');
+            
+            // Clear previous messages
+            errorDiv.textContent = '';
+            resultDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('passwordDisplay').textContent = data.password;
+                    document.getElementById('resultWebsite').textContent = data.website;
+                    document.getElementById('resultUsername').textContent = data.username || 'N/A';
+                    resultDiv.style.display = 'block';
+                    
+                    // Clear form
+                    document.getElementById('website').value = '';
+                    document.getElementById('username').value = '';
+                } else {
+                    errorDiv.textContent = data.error || 'Failed to generate password';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Network error. Please try again.';
+            }
+        });
+    </script>
+</body>
+</html>

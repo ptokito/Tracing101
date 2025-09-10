@@ -40,6 +40,7 @@
             border-radius: 8px;
             font-size: 16px;
             transition: border-color 0.3s;
+            box-sizing: border-box;
         }
         input[type="text"]:focus, input[type="number"]:focus {
             outline: none;
@@ -65,22 +66,6 @@
         .btn:hover {
             transform: translateY(-2px);
         }
-        .result {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            display: none;
-        }
-        .password-display {
-            font-family: 'Courier New', monospace;
-            font-size: 18px;
-            background: #e9ecef;
-            padding: 15px;
-            border-radius: 5px;
-            word-break: break-all;
-            margin: 10px 0;
-        }
         .nav-links {
             text-align: center;
             margin-top: 30px;
@@ -96,6 +81,10 @@
         .error {
             color: #dc3545;
             margin-top: 10px;
+            padding: 10px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
         }
     </style>
 </head>
@@ -103,7 +92,11 @@
     <div class="container">
         <h1>🔐 Secure Password Generator</h1>
         
-        <form id="passwordForm">
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        <form method="POST" action="/generate">
             <div class="form-group">
                 <label for="website">Website/Service *</label>
                 <input type="text" id="website" name="website" required placeholder="e.g., github.com">
@@ -129,57 +122,9 @@
             <button type="submit" class="btn">Generate Password</button>
         </form>
         
-        <div id="result" class="result">
-            <h3>Generated Password:</h3>
-            <div id="passwordDisplay" class="password-display"></div>
-            <p><strong>Website:</strong> <span id="resultWebsite"></span></p>
-            <p><strong>Username:</strong> <span id="resultUsername"></span></p>
-            <p>✅ Password saved to database!</p>
-        </div>
-        
-        <div id="error" class="error"></div>
-        
         <div class="nav-links">
             <a href="/passwords">View All Passwords →</a>
         </div>
     </div>
-
-    <script>
-        document.getElementById('passwordForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            const errorDiv = document.getElementById('error');
-            const resultDiv = document.getElementById('result');
-            
-            // Clear previous messages
-            errorDiv.textContent = '';
-            resultDiv.style.display = 'none';
-            
-            try {
-                const response = await fetch('/generate', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('passwordDisplay').textContent = data.password;
-                    document.getElementById('resultWebsite').textContent = data.website;
-                    document.getElementById('resultUsername').textContent = data.username || 'N/A';
-                    resultDiv.style.display = 'block';
-                    
-                    // Clear form
-                    document.getElementById('website').value = '';
-                    document.getElementById('username').value = '';
-                } else {
-                    errorDiv.textContent = data.error || 'Failed to generate password';
-                }
-            } catch (error) {
-                errorDiv.textContent = 'Network error. Please try again.';
-            }
-        });
-    </script>
 </body>
 </html>

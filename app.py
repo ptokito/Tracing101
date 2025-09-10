@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+import sqlite3
 import secrets
 import string
 from datetime import datetime
@@ -6,8 +7,25 @@ import os
 
 app = Flask(__name__)
 
-# In-memory storage for demo purposes (will reset on each deployment)
-passwords_storage = []
+# Database setup
+DATABASE = 'passwords.db'
+
+def init_db():
+    """Initialize the database with required tables"""
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS passwords (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            website TEXT NOT NULL,
+            username TEXT,
+            password TEXT NOT NULL,
+            length INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 def generate_password(length=12, include_symbols=True):
     """Generate a secure password"""
@@ -65,17 +83,15 @@ def generate():
         # Generate password
         password = generate_password(length, include_symbols)
 
-        # Store in memory (temporary storage)
-        password_entry = {
-            'id': len(passwords_storage) + 1,
-            'website': website,
-            'username': username,
-            'password': password,
-            'length': length,
-            'include_symbols': include_symbols,
-            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        passwords_storage.append(password_entry)
+        # Store in database
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO passwords (website, username, password, length)
+            VALUES (?, ?, ?, ?)
+        ''', (website, username, password, length))
+        conn.commit()
+        conn.close()
 
         # Return success page with the generated password
         return render_template('result.html', 
@@ -86,107 +102,81 @@ def generate():
                              include_symbols=include_symbols)
     
     except Exception as e:
+        app.logger.error(f"Error generating password: {str(e)}")
         return render_template('index.html', error=f'An error occurred: {str(e)}')
-
-@app.route('/api/generate', methods=['POST'])
-def api_generate():
-    """API endpoint for generating passwords (returns JSON)"""
-    data = request.get_json() if request.is_json else request.form
-    
-    website = data.get('website', '').strip()
-    username = data.get('username', '').strip()
-    
-    try:
-        length = int(data.get('length', 12))
-    except (ValueError, TypeError):
-        return jsonify({'error': 'Invalid length parameter'}), 400
-        
-    include_symbols = bool(data.get('symbols', False))
-
-    if not website:
-        return jsonify({'error': 'Website is required'}), 400
-
-    if length < 4 or length > 128:
-        return jsonify({'error': 'Password length must be between 4 and 128'}), 400
-
-    try:
-        # Generate password
-        password = generate_password(length, include_symbols)
-
-        # Store in memory
-        password_entry = {
-            'id': len(passwords_storage) + 1,
-            'website': website,
-            'username': username,
-            'password': password,
-            'length': length,
-            'include_symbols': include_symbols,
-            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        passwords_storage.append(password_entry)
-
-        return jsonify({
-            'success': True,
-            'password': password,
-            'website': website,
-            'username': username,
-            'length': length
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/passwords')
 def view_passwords():
-    """View all stored passwords (from current session)"""
+    """View all stored passwords"""
     try:
-        # Sort by most recent first
-        sorted_passwords = sorted(passwords_storage, key=lambda x: x['created_at'], reverse=True)
-        return render_template('passwords.html', passwords=sorted_passwords)
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, website, username, password, length, created_at
+            FROM passwords
+            ORDER BY created_at DESC
+        ''')
+        passwords = cursor.fetchall()
+        conn.close()
+        
+        # Debug output
+        print(f"Found {len(passwords)} passwords in database")
+        
+        return render_template('passwords.html', passwords=passwords)
     
     except Exception as e:
+        app.logger.error(f"Error retrieving passwords: {str(e)}")
         return render_template('passwords.html', passwords=[], error=str(e))
 
 @app.route('/api/passwords')
 def api_passwords():
-    """API endpoint for monitoring purposes - simple data retrieval"""
+    """API endpoint for monitoring purposes"""
     try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM passwords')
+        count = cursor.fetchone()[0]
+        conn.close()
+
         return jsonify({
-            'total_passwords': len(passwords_storage),
+            'total_passwords': count,
             'status': 'healthy',
-            'storage_type': 'in-memory'
+            'storage_type': 'sqlite',
+            'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
+        app.logger.error(f"API error: {str(e)}")
         return jsonify({'error': str(e), 'status': 'unhealthy'}), 500
 
 @app.route('/delete/<int:password_id>', methods=['POST'])
 def delete_password(password_id):
     """Delete a password entry"""
     try:
-        global passwords_storage
-        passwords_storage = [p for p in passwords_storage if p['id'] != password_id]
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM passwords WHERE id = ?', (password_id,))
+        conn.commit()
+        conn.close()
         return redirect(url_for('view_passwords'))
     except Exception as e:
+        app.logger.error(f"Error deleting password: {str(e)}")
         return redirect(url_for('view_passwords'))
-
-@app.route('/clear', methods=['POST'])
-def clear_passwords():
-    """Clear all stored passwords"""
-    global passwords_storage
-    passwords_storage = []
-    return redirect(url_for('view_passwords'))
 
 @app.route('/health')
 def health_check():
     """Health check endpoint for monitoring"""
     try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1')
+        conn.close()
         return jsonify({
             'status': 'healthy',
-            'storage': 'in-memory',
-            'passwords_count': len(passwords_storage),
+            'database': 'connected',
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
+        app.logger.error(f"Health check failed: {str(e)}")
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 @app.route('/favicon.ico')
@@ -201,6 +191,7 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
+    app.logger.error(f"Internal error: {str(error)}")
     return render_template('index.html', error='Internal server error'), 500
 
 @app.errorhandler(405)
@@ -208,5 +199,9 @@ def method_not_allowed(error):
     return render_template('index.html', error='Method not allowed'), 405
 
 if __name__ == '__main__':
+    # Initialize database
+    init_db()
+    
     # Run the application
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

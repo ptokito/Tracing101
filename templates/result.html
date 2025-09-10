@@ -3,26 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Password Generated</title>
+    <title>Password Generated - Secure Password Generator</title>
     <style>
-        body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
-        .password-display { background: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 18px; word-break: break-all; }
-        .btn { display: inline-block; padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .password-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 18px;
+            word-break: break-all;
+            border: 2px solid #28a745;
+            margin: 20px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 10px 10px 0;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background: #5a67d8;
+        }
+        .details {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Password Generated Successfully!</h1>
+        <h1>🎉 Password Generated Successfully!</h1>
         
         <div class="password-display">{{ password }}</div>
         
-        <p><strong>Website:</strong> {{ website }}</p>
-        <p><strong>Username:</strong> {{ username or 'Not specified' }}</p>
-        <p><strong>Length:</strong> {{ length }} characters</p>
+        <div class="details">
+            <p><strong>Website/Service:</strong> {{ website }}</p>
+            {% if username %}
+            <p><strong>Username/Email:</strong> {{ username }}</p>
+            {% endif %}
+            <p><strong>Length:</strong> {{ length }} characters</p>
+            <p><strong>Includes Symbols:</strong> {{ 'Yes' if include_symbols else 'No' }}</p>
+        </div>
         
-        <a href="{{ url_for('index') }}" class="btn">Generate Another</a>
-        <a href="{{ url_for('view_passwords') }}" class="btn">View All Passwords</a>
+        <div class="actions">
+            <a href="{{ url_for('index') }}" class="btn">Generate Another Password</a>
+            <a href="{{ url_for('view_passwords') }}" class="btn">View All Passwords</a>
+        </div>
     </div>
 </body>
 </html>
